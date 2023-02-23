@@ -1,4 +1,5 @@
 .env 
 dbdata
 venv
+.vscode
 __pycache__

@@ -1,0 +1,17 @@
+version: '3.4'
+
+version: '3.7'
+services:
+  inventory:
+    image: payment
+    build:
+      context: .
+      dockerfile: ./Dockerfile
+    ports:
+      - 8001:8001
+  database:
+    image: redis:alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - $PWD/data:/data
