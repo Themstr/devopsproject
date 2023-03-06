@@ -1,0 +1,54 @@
+pipeline {
+    agent any
+    
+    environment {
+        SONAR_TOKEN = credentials('sonar-token')
+        NEXUS_CREDENTIALS = credentials('nexus-credentials')
+        DOCKER_CREDENTIALS = credentials('docker-credentials')
+        NPM_REGISTRY_URL = 'https://registry.npmjs.org'
+        NEXUS_REPO_URL = 'https://nexus.example.com/repository/npm/'
+        DOCKER_REPO_URL = 'ghcr.io/themstr/devopsproject'
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+        stage('Install dependencies') {
+            steps {
+                sh 'npm install'
+            }
+        }
+        stage('SonarQube Analysis') {
+            steps {
+                withSonarQubeEnv('SonarQube') {
+                    sh 'sonar-scanner -Dsonar.login=${SONAR_TOKEN}'
+                }
+            }
+        }
+        stage('Build Docker Image') {
+            steps {
+                sh 'docker build -t frontend:latest .'
+            }
+        }
+
+        stage('Push Docker Image to GitHub') {
+            steps {
+                withCredentials([usernamePassword(credentialsId: 'docker-credentials', usernameVariable: 'DOCKER_USERNAME', passwordVariable: 'DOCKER_PASSWORD')]) {
+                    sh "echo $DOCKER_PASSWORD | docker login ghcr.io -u $DOCKER_USERNAME --password-stdin"
+                    sh "docker tag myapp:latest $DOCKER_REPO_URL/frontend:latest"
+                    sh "docker push $DOCKER_REPO_URL/frontend:latest"
+                }
+            }
+        }
+        stage('Package and Publish to Nexus') {
+            steps {
+                withCredentials([usernamePassword(credentialsId: 'nexus-credentials', usernameVariable: 'NEXUS_USERNAME', passwordVariable: 'NEXUS_PASSWORD')]) {
+                    sh "curl -v -u $NEXUS_USERNAME:$NEXUS_PASSWORD --upload-file *.tgz $NEXUS_REPO_URL"
+                }
+            }
+        }
+    }
+}

@@ -1,0 +1,63 @@
+pipeline {
+    agent any
+    
+    environment {
+        SONAR_TOKEN = credentials('sonar-token')
+        NEXUS_CREDENTIALS = credentials('nexus-credentials')
+        PYPI_REPO_URL = 'https://pypi.org/simple/'
+        NEXUS_REPO_URL = 'https://nexus.example.com/repository/pypi/'
+        DOCKER_REPO_URL = 'docker.pkg.github.com/themstr/devopsproject'
+
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+
+        stage('Build') {
+            steps {
+                sh 'python -m venv venv'
+                sh 'source venv/bin/activate'
+                sh 'pip install --upgrade pip'
+                sh 'pip install -r requirements.txt'
+            }
+        }
+
+        stage('SonarQube Analysis') {
+            steps {
+                withSonarQubeEnv('SonarQube') {
+                    // sh 'python -m pytest --cov=myapp tests/'
+                    sh 'sonar-scanner -Dsonar.login=${SONAR_TOKEN}'
+                }
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                sh 'docker build -t inventory:latest .'
+            }
+        }
+
+        stage('Push Docker Image to GitHub') {
+            steps {
+                withCredentials([usernamePassword(credentialsId: 'github-credentials', usernameVariable: 'GITHUB_USERNAME', passwordVariable: 'GITHUB_TOKEN')]) {
+                    sh "docker login -u $GITHUB_USERNAME -p $GITHUB_TOKEN docker.pkg.github.com"
+                    sh "docker tag inventory:latest $DOCKER_REPO_URL/inventory:latest"
+                    sh "docker push $DOCKER_REPO_URL/inventory:latest"
+                }
+            }
+        }
+        stage('Package and Publish to Nexus') {
+            steps {
+                // sh 'python setup.py sdist bdist_wheel'
+                withCredentials([usernamePassword(credentialsId: 'nexus-credentials', usernameVariable: 'NEXUS_USERNAME', passwordVariable: 'NEXUS_PASSWORD')]) {
+                    sh "twine upload -u $NEXUS_USERNAME -p $NEXUS_PASSWORD --repository-url $NEXUS_REPO_URL dist/*"
+                }
+            }
+        }
+        
+    }
+}
